@@ -1,0 +1,36 @@
+project:
+  name: "ERA5 Tunisia Climate"
+  code: "ERA5-TN"
+  version: "0.1.0"
+
+data:
+  dataset: "reanalysis-era5-single-levels"
+  product_type: "reanalysis"
+  start_date: "2000-01-01"
+  end_date: "2025-12-31"
+  area: [37.75, 7.50, 30.00, 11.75]
+  variables: ["t2m", "tp", "u10", "v10"]
+  time_reference: "UTC"
+
+acquisition:
+  unit: "month"
+  data_format: "netcdf"
+  download_format: "zip"
+  retries: 5
+  retry_base_seconds: 10
+  retry_max_seconds: 300
+  timeout_seconds: 300
+
+naming:
+  raw_archive: "era5_tn_{month}.zip"
+  extracted_dir: "{month}"
+  processed_file: "era5_tn_{month}.nc"
+
+paths:
+  raw: "data/raw"
+  interim: "data/interim"
+  processed: "data/processed"
+
+
+logging:
+  config: "config/logging.yaml"

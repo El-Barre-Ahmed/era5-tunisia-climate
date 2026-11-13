@@ -1,0 +1,96 @@
+# ============================================================
+# Python
+# ============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+.installed.cfg
+
+# Environnements virtuels
+.venv/
+venv/
+env/
+ENV/
+
+# Outils et caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# ============================================================
+# Secrets et configuration locale
+# ============================================================
+.env
+.env.*
+!.env.example
+.cdsapirc
+*.pem
+*.key
+
+# ============================================================
+# Données et résultats (volumineux / non versionnés)
+# ============================================================
+data/raw/*
+data/interim/*
+data/processed/*
+results/*
+logs/*
+*.log
+*.nc
+*.nc4
+*.zip
+*.part
+*.tmp
+
+# Conserver l'arborescence des dossiers de données
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+!results/.gitkeep
+
+# ============================================================
+# R
+# ============================================================
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+renv/library/
+renv/local/
+renv/staging/
+renv/sandbox/
+
+# ============================================================
+# Notebooks
+# ============================================================
+.ipynb_checkpoints/
+
+# ============================================================
+# Éditeurs et systèmes d'exploitation
+# ============================================================
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# ============================================================
+# Divers
+# ============================================================
+*.bak
+*.orig
+.cdsapirc

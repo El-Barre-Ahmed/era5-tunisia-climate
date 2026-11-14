@@ -47,7 +47,7 @@ data/raw/*
 data/interim/*
 data/processed/*
 results/*
-logs/*
+logs/
 *.log
 *.nc
 *.nc4

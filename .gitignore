@@ -47,8 +47,8 @@ data/raw/*
 data/interim/*
 data/processed/*
 results/*
-logs/*
 *.log
+!logs/.gitkeep
 *.nc
 *.nc4
 *.zip

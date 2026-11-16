@@ -22,9 +22,9 @@ acquisition:
   timeout_seconds: 300
 
 naming:
-  raw_archive: "era5_tn_{month}.zip"
-  extracted_dir: "{month}"
-  processed_file: "era5_tn_{month}.nc"
+  raw_archive: "era5_tn_{year}_{month}.zip"
+  extracted_dir: "{year}_{month}"
+  processed_file: "era5_tn_{year}_{month}.nc"
 
 paths:
   raw: "data/raw"

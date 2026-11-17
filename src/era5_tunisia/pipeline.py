@@ -118,7 +118,7 @@ def resolve_month_paths(config: dict, month: Month) -> MonthPaths:
     )
 
 
-def _days_for_month(config: dict, month: Month) -> list[str]:
+def days_for_month(config: dict, month: Month) -> list[str]:
     """Jours du mois, restreints à la période configurée."""
 
     first_day = date(month.year, month.month, 1)
@@ -196,7 +196,7 @@ def run_month(
 
     try:
 
-        days = _days_for_month(config, month)
+        days = days_for_month(config, month)
 
         archive_path = download_month(
             client,

@@ -230,7 +230,7 @@ def _handle_run(
 ) -> int:
     """Exécute le pipeline complet."""
 
-    client = None if args.dry_run else create_cds_client()
+    client = None if args.dry_run else create_cds_client(config)
 
     result = run_pipeline(
         client,
@@ -258,17 +258,19 @@ def _handle_download(
 
         return EXIT_SUCCESS
 
-    client = create_cds_client()
+    client = create_cds_client(config)
     failures = 0
 
     for month in months:
+
+        year, month_number = month
 
         try:
             download_month(
                 client,
                 config,
-                month.year,
-                month.month,
+                year,
+                month_number,
                 days_for_month(config, month),
                 force=args.force,
             )

@@ -29,7 +29,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]
 pythonpath = ["src"]
-addopts = "-ra"
+addopts = "-ra -m 'not integration'"
+markers = [
+    "integration: tests requiring network, credentials, or real ERA5 data",
+]
 
 [tool.coverage.run]
 source = ["era5_tunisia"]

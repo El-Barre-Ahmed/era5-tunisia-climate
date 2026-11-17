@@ -1,5 +1,7 @@
 import logging
 
+import pytest
+
 from era5_tunisia.config import load_config
 from era5_tunisia.logging_config import setup_logging
 from era5_tunisia.acquisition.cds_client import create_cds_client
@@ -9,6 +11,7 @@ from era5_tunisia.acquisition.downloader import (
 )
 
 
+@pytest.mark.integration
 def test_download_january_2000():
     """Tester le téléchargement des données ERA5 de janvier 2000."""
 

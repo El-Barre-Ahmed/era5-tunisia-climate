@@ -39,6 +39,18 @@ def get_archive_info(
     Récupère l'année et le mois à partir du nom de l'archive.
     """
 
+    missing_placeholders = [
+        placeholder
+        for placeholder in ("{year}", "{month}")
+        if placeholder not in archive_template
+    ]
+
+    if missing_placeholders:
+        raise ValueError(
+            "Template d'archive invalide, placeholders manquants : "
+            + ", ".join(missing_placeholders)
+        )
+
     pattern = re.escape(archive_template)
 
     pattern = pattern.replace(
@@ -88,18 +100,41 @@ def is_already_extracted(
     return saved_hash == archive_hash
 
 
-def validate_archive(archive_path: Path) -> None:
+def validate_archive(
+    archive_path: Path,
+    config: dict,
+) -> None:
     """
-    Vérifie l'intégrité de l'archive ZIP.
+    Vérifie l'intégrité et le contenu de l'archive ZIP.
     """
 
     with zipfile.ZipFile(archive_path, "r") as archive:
+
+        member_names = archive.namelist()
+
+        if not member_names:
+            raise ValueError(
+                f"L'archive ZIP est vide : {archive_path.name}"
+            )
 
         corrupted_file = archive.testzip()
 
         if corrupted_file is not None:
             raise zipfile.BadZipFile(
                 f"Fichier corrompu : {corrupted_file}"
+            )
+
+        expected_files = {
+            config["validation"]["files"]["instant"],
+            config["validation"]["files"]["accumulated"],
+        }
+
+        missing_files = sorted(expected_files - set(member_names))
+
+        if missing_files:
+            raise ValueError(
+                "Fichiers NetCDF manquants dans l'archive : "
+                + ", ".join(missing_files)
             )
 
 
@@ -143,7 +178,8 @@ def save_checksum(
 def extract_archive(
     archive_path: Path,
     extracted_dir: Path,
-    archive_hash: str
+    archive_hash: str,
+    config: dict,
 ) -> None:
     """
     Extrait une archive ZIP dans un dossier temporaire,
@@ -171,8 +207,8 @@ def extract_archive(
 
     try:
 
-        # Vérification de l'intégrité du ZIP.
-        validate_archive(archive_path)
+        # Vérification de l'intégrité et du contenu du ZIP.
+        validate_archive(archive_path, config)
 
         # Extraction dans le dossier temporaire.
         with zipfile.ZipFile(archive_path, "r") as archive:
@@ -180,6 +216,9 @@ def extract_archive(
             validate_zip_paths(archive)
 
             archive.extractall(temporary_dir)
+
+        # Le dossier temporaire est créé en 0o700 par mkdtemp.
+        temporary_dir.chmod(0o755)
 
         # Enregistrement de l'empreinte SHA-256.
         save_checksum(
@@ -222,6 +261,42 @@ def extract_archive(
         # Nettoyage du dossier temporaire.
         if temporary_dir.exists():
             shutil.rmtree(temporary_dir, ignore_errors=True)
+
+
+def extract_month(
+    archive_path: Path,
+    extracted_dir: Path,
+    config: dict,
+    *,
+    force: bool = False,
+) -> bool:
+    """
+    Extrait une archive mensuelle si nécessaire.
+
+    Retourne False si l'archive a déjà été extraite avec le même
+    hash, True si elle a été extraite.
+    """
+
+    archive_hash = calculate_sha256(archive_path)
+
+    if not force and is_already_extracted(
+        extracted_dir,
+        archive_hash,
+    ):
+        logger.info(
+            "Déjà extrait, ignoré : %s",
+            archive_path.name,
+        )
+        return False
+
+    extract_archive(
+        archive_path,
+        extracted_dir,
+        archive_hash,
+        config,
+    )
+
+    return True
 
 
 def extract_all() -> None:
@@ -289,31 +364,15 @@ def extract_all() -> None:
 
             extracted_dir = interim_dir / extracted_name
 
-            # Calcul de l'empreinte du ZIP.
-            archive_hash = calculate_sha256(archive_path)
-
-            # Vérification d'une extraction précédente.
-            if is_already_extracted(
-                extracted_dir,
-                archive_hash
-            ):
-
-                logger.info(
-                    "Déjà extrait, ignoré : %s",
-                    archive_path.name
-                )
-
-                skipped_count += 1
-                continue
-
-            # Extraction de l'archive.
-            extract_archive(
+            # Extraction de l'archive si nécessaire.
+            if extract_month(
                 archive_path,
                 extracted_dir,
-                archive_hash
-            )
-
-            extracted_count += 1
+                config,
+            ):
+                extracted_count += 1
+            else:
+                skipped_count += 1
 
         except (
             OSError,

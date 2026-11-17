@@ -5,6 +5,7 @@ import logging
 import time
 
 from datetime import date, timedelta
+from pathlib import Path
 from zipfile import ZipFile, BadZipFile
 
 from era5_tunisia.config import load_config, PROJECT_ROOT
@@ -98,8 +99,20 @@ def is_valid_zip(file_path):
         return False
 
 
-def download_month(client, config, year, month, days):
-    """Télécharger les données ERA5 pour un mois."""
+def download_month(
+    client,
+    config,
+    year,
+    month,
+    days,
+    *,
+    force: bool = False,
+) -> Path:
+    """Télécharger les données ERA5 pour un mois.
+
+    Si ``force`` est vrai, une archive existante est supprimée puis
+    téléchargée à nouveau. Sinon, une archive valide est réutilisée.
+    """
 
     raw_dir = PROJECT_ROOT / config["paths"]["raw"]
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -112,24 +125,36 @@ def download_month(client, config, year, month, days):
     output_file = raw_dir / filename
     temp_file = output_file.with_name(output_file.name + ".part")
 
+    acquisition = config["acquisition"]
+
+    retries = acquisition["retries"]
+    if retries <= 0:
+        raise ValueError(
+            "acquisition.retries doit être supérieur ou égal à 1."
+        )
+
+    base_delay = acquisition["retry_base_seconds"]
+    max_delay = acquisition["retry_max_seconds"]
+
     # Vérifier si le fichier existe déjà
     if output_file.exists():
 
-        if is_valid_zip(output_file):
+        if not force and is_valid_zip(output_file):
             logger.info("Already downloaded: %s", output_file.name)
             return output_file
 
-        logger.warning("Invalid archive: %s", output_file.name)
+        if force:
+            logger.info(
+                "Forced download, removing existing archive: %s",
+                output_file.name,
+            )
+        else:
+            logger.warning("Invalid archive: %s", output_file.name)
+
         output_file.unlink()
 
     dataset = config["data"]["dataset"]
     request = build_request(config, year, month, days)
-
-    acquisition = config["acquisition"]
-
-    retries = acquisition["retries"]
-    base_delay = acquisition["retry_base_seconds"]
-    max_delay = acquisition["retry_max_seconds"]
 
     # Télécharger avec plusieurs tentatives
     for attempt in range(1, retries + 1):

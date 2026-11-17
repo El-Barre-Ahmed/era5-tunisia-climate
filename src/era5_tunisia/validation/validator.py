@@ -1,5 +1,7 @@
 import logging
 import re
+import sys
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +12,34 @@ from era5_tunisia.config import load_config, PROJECT_ROOT
 
 
 logger = logging.getLogger(__name__)
+
+
+def _build_extracted_dir_pattern(extracted_template: str) -> str:
+    """Construit le motif regex des dossiers extraits depuis le template."""
+
+    missing_placeholders = [
+        placeholder
+        for placeholder in ("{year}", "{month}")
+        if placeholder not in extracted_template
+    ]
+
+    if missing_placeholders:
+        raise ValueError(
+            "Template de dossier extrait invalide, placeholders manquants : "
+            + ", ".join(missing_placeholders)
+        )
+
+    pattern = re.escape(extracted_template)
+    pattern = pattern.replace(
+        re.escape("{year}"),
+        r"(?P<year>\d{4})",
+    )
+    pattern = pattern.replace(
+        re.escape("{month}"),
+        r"(?P<month>\d{2})",
+    )
+
+    return pattern
 
 
 # --------------------------------------------------
@@ -307,9 +337,12 @@ def validate_month(directory, config):
     logger.info("VALIDATION DU MOIS : %s", directory.name)
     logger.info("=" * 60)
 
+    extracted_template = config["naming"]["extracted_dir"]
+    directory_pattern = _build_extracted_dir_pattern(extracted_template)
+
     match = re.fullmatch(
-        r"(\d{4})_(\d{2})",
-        directory.name
+        directory_pattern,
+        directory.name,
     )
 
     if not match:
@@ -319,7 +352,8 @@ def validate_month(directory, config):
         )
         return False
 
-    year, month = map(int, match.groups())
+    year = int(match.group("year"))
+    month = int(match.group("month"))
 
     if not 1 <= month <= 12:
         logger.error(
@@ -376,10 +410,11 @@ def validate_month(directory, config):
 # 3. Validation de tous les mois
 # --------------------------------------------------
 
-def validate_all():
-    """Valide tous les mois présents dans le dossier interim."""
+def validate_all(config: dict | None = None) -> bool:
+    """Valide tous les mois attendus dans le dossier interim."""
 
-    config = load_config()
+    if config is None:
+        config = load_config()
 
     interim_directory = (
         PROJECT_ROOT / config["paths"]["interim"]
@@ -387,66 +422,88 @@ def validate_all():
 
     logger.info("Dossier à valider : %s", interim_directory)
 
-    if not interim_directory.exists():
+    start_date = date.fromisoformat(config["data"]["start_date"])
+    end_date = date.fromisoformat(config["data"]["end_date"])
 
-        logger.error(
-            "[ÉCHEC] Dossier interim introuvable"
-        )
-
+    if start_date > end_date:
+        logger.error("[ÉCHEC] Période de configuration invalide")
         return False
 
-    directories = sorted(
-        path
-        for path in interim_directory.iterdir()
-        if path.is_dir()
+    expected_months = pd.date_range(
+        start=pd.Timestamp(
+            year=start_date.year,
+            month=start_date.month,
+            day=1,
+        ),
+        end=pd.Timestamp(
+            year=end_date.year,
+            month=end_date.month,
+            day=1,
+        ),
+        freq="MS",
     )
 
-    # Ne retenir que les dossiers au format YYYY_MM
-    directories = [
-        path for path in directories
-        if re.fullmatch(r"\d{4}_\d{2}", path.name)
-    ]
+    extracted_template = config["naming"]["extracted_dir"]
 
-    if not directories:
-
-        logger.error(
-            "[ÉCHEC] Aucun dossier mensuel trouvé"
-        )
-
-        return False
-
+    total_count = len(expected_months)
     valid_count = 0
-    total_count = len(directories)
+    missing_count = 0
+    invalid_count = 0
 
     logger.info(
         "Nombre de mois à valider : %s",
         total_count
     )
 
-    for directory in directories:
+    for expected_month in expected_months:
+
+        month_name = extracted_template.format(
+            year=expected_month.year,
+            month=f"{expected_month.month:02d}",
+        )
+
+        directory = interim_directory / month_name
+
+        if not directory.is_dir():
+            logger.error(
+                "[ÉCHEC] Mois manquant : %s",
+                month_name,
+            )
+            missing_count += 1
+            continue
 
         if validate_month(directory, config):
             valid_count += 1
-
-    failed_count = total_count - valid_count
+        else:
+            invalid_count += 1
 
     logger.info("=" * 60)
     logger.info("BILAN GLOBAL DE VALIDATION")
     logger.info("Mois valides : %s", valid_count)
-    logger.info("Mois invalides : %s", failed_count)
-    logger.info("Total des mois : %s", total_count)
+    logger.info("Mois manquants : %s", missing_count)
+    logger.info("Mois invalides : %s", invalid_count)
+    logger.info("Total des mois attendus : %s", total_count)
     logger.info("=" * 60)
 
-    return valid_count == total_count
+    return (
+        total_count > 0
+        and valid_count == total_count
+        and missing_count == 0
+        and invalid_count == 0
+    )
 
-def main():
+def main() -> None:
     from era5_tunisia.logging_config import setup_logging
 
     setup_logging()
 
-    print("Validator started!")
+    logger.info("Validator started")
 
-    validate_all()
+    result = validate_all()
+
+    logger.info("Validator finished")
+
+    sys.exit(0 if result else 1)
 
 
 if __name__ == "__main__":

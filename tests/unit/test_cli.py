@@ -4,7 +4,6 @@ import pytest
 import yaml
 
 import main as cli
-from era5_tunisia.pipeline import Month, PipelineResult
 
 
 @pytest.fixture
@@ -40,8 +39,8 @@ def test_parser_parses_run_options() -> None:
 
     assert args.command == "run"
     assert args.log_level == "DEBUG"
-    assert args.start == Month(2001, 1)
-    assert args.end == Month(2001, 3)
+    assert args.start == (2001, 1)
+    assert args.end == (2001, 3)
     assert args.force is True
     assert args.dry_run is True
     assert args.fail_fast is True
@@ -134,7 +133,7 @@ def test_run_returns_failure_when_a_month_fails(
     monkeypatch.setattr(
         cli,
         "run_pipeline",
-        lambda *args, **kwargs: PipelineResult(failed_count=1),
+        lambda *args, **kwargs: {"failed_count": 1},
     )
 
     code = cli.main(
@@ -160,7 +159,7 @@ def test_run_returns_success_when_all_months_succeed(
     monkeypatch.setattr(
         cli,
         "run_pipeline",
-        lambda *args, **kwargs: PipelineResult(success_count=1),
+        lambda *args, **kwargs: {"success_count": 1, "failed_count": 0},
     )
 
     code = cli.main(

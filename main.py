@@ -12,9 +12,9 @@ from era5_tunisia.config import load_config
 from era5_tunisia.extraction.extractor import extract_month
 from era5_tunisia.logging_config import setup_logging
 from era5_tunisia.pipeline import (
-    Month,
     days_for_month,
     iter_months,
+    month_label,
     resolve_month_paths,
     run_pipeline,
 )
@@ -31,8 +31,8 @@ EXIT_FAILURE = 1
 EXIT_USAGE = 2
 
 
-def _month_type(value: str) -> Month:
-    """Convertit une valeur ``YYYY-MM`` en Month."""
+def _month_type(value: str) -> tuple[int, int]:
+    """Convertit une valeur ``YYYY-MM`` en tuple (année, mois)."""
 
     try:
         parsed = date.fromisoformat(f"{value}-01")
@@ -41,7 +41,7 @@ def _month_type(value: str) -> Month:
             f"Mois invalide, format attendu YYYY-MM : {value}"
         ) from error
 
-    return Month(parsed.year, parsed.month)
+    return (parsed.year, parsed.month)
 
 
 def _add_month_options(parser: argparse.ArgumentParser) -> None:
@@ -173,7 +173,10 @@ def _configure_logging(args: argparse.Namespace) -> None:
     setup_logging(level=args.log_level)
 
 
-def _resolve_months(args: argparse.Namespace, config: dict) -> list[Month]:
+def _resolve_months(
+    args: argparse.Namespace,
+    config: dict,
+) -> list[tuple[int, int]]:
     """Détermine les mois à traiter depuis les options ou la config."""
 
     if args.year is not None or args.month is not None:
@@ -186,15 +189,15 @@ def _resolve_months(args: argparse.Namespace, config: dict) -> list[Month]:
         if not 1 <= args.month <= 12:
             raise ValueError("--month doit être compris entre 1 et 12.")
 
-        return [Month(args.year, args.month)]
+        return [(args.year, args.month)]
 
     start = args.start or _month_type(config["data"]["start_date"][:7])
     end = args.end or _month_type(config["data"]["end_date"][:7])
 
     return list(
         iter_months(
-            date(start.year, start.month, 1),
-            date(end.year, end.month, 1),
+            date(start[0], start[1], 1),
+            date(end[0], end[1], 1),
         )
     )
 
@@ -202,7 +205,7 @@ def _resolve_months(args: argparse.Namespace, config: dict) -> list[Month]:
 def _handle_status(
     args: argparse.Namespace,
     config: dict,
-    months: list[Month],
+    months: list[tuple[int, int]],
 ) -> int:
     """Affiche l'état des fichiers sans rien écrire."""
 
@@ -211,10 +214,10 @@ def _handle_status(
         paths = resolve_month_paths(config, month)
 
         print(
-            f"{month.label}: "
-            f"zip={'oui' if paths.raw_archive.is_file() else 'non'} "
-            f"extrait={'oui' if paths.interim_dir.is_dir() else 'non'} "
-            f"traité={'oui' if paths.processed_file.is_file() else 'non'}"
+            f"{month_label(month)}: "
+            f"zip={'oui' if paths['raw_archive'].is_file() else 'non'} "
+            f"extrait={'oui' if paths['interim_dir'].is_dir() else 'non'} "
+            f"traité={'oui' if paths['processed_file'].is_file() else 'non'}"
         )
 
     return EXIT_SUCCESS
@@ -223,7 +226,7 @@ def _handle_status(
 def _handle_run(
     args: argparse.Namespace,
     config: dict,
-    months: list[Month],
+    months: list[tuple[int, int]],
 ) -> int:
     """Exécute le pipeline complet."""
 
@@ -238,20 +241,20 @@ def _handle_run(
         fail_fast=args.fail_fast,
     )
 
-    return EXIT_SUCCESS if result.failed_count == 0 else EXIT_FAILURE
+    return EXIT_SUCCESS if result["failed_count"] == 0 else EXIT_FAILURE
 
 
 def _handle_download(
     args: argparse.Namespace,
     config: dict,
-    months: list[Month],
+    months: list[tuple[int, int]],
 ) -> int:
     """Télécharge une seule archive par mois."""
 
     if args.dry_run:
 
         for month in months:
-            logger.info("[dry-run] Téléchargement simulé : %s", month.label)
+            logger.info("[dry-run] Téléchargement simulé : %s", month_label(month))
 
         return EXIT_SUCCESS
 
@@ -271,7 +274,7 @@ def _handle_download(
             )
         except Exception:
 
-            logger.exception("Échec du téléchargement : %s", month.label)
+            logger.exception("Échec du téléchargement : %s", month_label(month))
             failures += 1
 
     return EXIT_SUCCESS if failures == 0 else EXIT_FAILURE
@@ -280,7 +283,7 @@ def _handle_download(
 def _handle_extract(
     args: argparse.Namespace,
     config: dict,
-    months: list[Month],
+    months: list[tuple[int, int]],
 ) -> int:
     """Extrait les archives mensuelles."""
 
@@ -291,25 +294,25 @@ def _handle_extract(
         paths = resolve_month_paths(config, month)
 
         if args.dry_run:
-            logger.info("[dry-run] Extraction simulée : %s", month.label)
+            logger.info("[dry-run] Extraction simulée : %s", month_label(month))
             continue
 
-        if not paths.raw_archive.is_file():
+        if not paths["raw_archive"].is_file():
 
-            logger.error("Archive absente : %s", paths.raw_archive)
+            logger.error("Archive absente : %s", paths["raw_archive"])
             failures += 1
             continue
 
         try:
             extract_month(
-                paths.raw_archive,
-                paths.interim_dir,
+                paths["raw_archive"],
+                paths["interim_dir"],
                 config,
                 force=args.force,
             )
         except Exception:
 
-            logger.exception("Échec de l'extraction : %s", month.label)
+            logger.exception("Échec de l'extraction : %s", month_label(month))
             failures += 1
 
     return EXIT_SUCCESS if failures == 0 else EXIT_FAILURE
@@ -318,7 +321,7 @@ def _handle_extract(
 def _handle_validate(
     args: argparse.Namespace,
     config: dict,
-    months: list[Month],
+    months: list[tuple[int, int]],
 ) -> int:
     """Valide les mois demandés."""
 
@@ -328,7 +331,7 @@ def _handle_validate(
 
         paths = resolve_month_paths(config, month)
 
-        if not validate_month(paths.interim_dir, config):
+        if not validate_month(paths["interim_dir"], config):
             failures += 1
 
     return EXIT_SUCCESS if failures == 0 else EXIT_FAILURE
@@ -336,7 +339,7 @@ def _handle_validate(
 
 def _process_month(
     config: dict,
-    month: Month,
+    month: tuple[int, int],
     *,
     force: bool,
 ) -> None:
@@ -344,16 +347,16 @@ def _process_month(
 
     paths = resolve_month_paths(config, month)
 
-    if not validate_month(paths.interim_dir, config):
-        raise ValueError(f"Validation échouée pour le mois {month.label}.")
+    if not validate_month(paths["interim_dir"], config):
+        raise ValueError(f"Validation échouée pour le mois {month_label(month)}.")
 
-    dataset = preprocess_month(paths.interim_dir, config)
+    dataset = preprocess_month(paths["interim_dir"], config)
 
     try:
         dataset = apply_transformations(dataset)
         write_netcdf(
             dataset,
-            paths.processed_file,
+            paths["processed_file"],
             overwrite=force,
         )
     finally:
@@ -363,7 +366,7 @@ def _process_month(
 def _handle_process(
     args: argparse.Namespace,
     config: dict,
-    months: list[Month],
+    months: list[tuple[int, int]],
 ) -> int:
     """Prépare les fichiers traités depuis les données extraites."""
 
@@ -373,19 +376,19 @@ def _handle_process(
 
         paths = resolve_month_paths(config, month)
 
-        if not args.force and paths.processed_file.exists():
-            logger.info("Déjà traité, ignoré : %s", paths.processed_file.name)
+        if not args.force and paths["processed_file"].exists():
+            logger.info("Déjà traité, ignoré : %s", paths["processed_file"].name)
             continue
 
         if args.dry_run:
-            logger.info("[dry-run] Traitement simulé : %s", month.label)
+            logger.info("[dry-run] Traitement simulé : %s", month_label(month))
             continue
 
         try:
             _process_month(config, month, force=args.force)
         except Exception:
 
-            logger.exception("Échec du traitement : %s", month.label)
+            logger.exception("Échec du traitement : %s", month_label(month))
             failures += 1
 
     return EXIT_SUCCESS if failures == 0 else EXIT_FAILURE

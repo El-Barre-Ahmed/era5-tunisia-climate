@@ -13,7 +13,6 @@ from era5_tunisia.pipeline import (
     STATUS_FAILED,
     STATUS_SKIPPED,
     STATUS_SUCCESS,
-    Month,
     iter_months,
     resolve_month_paths,
     run_month,
@@ -109,10 +108,10 @@ def test_iter_months_spans_years() -> None:
     months = list(iter_months(date(2001, 11, 15), date(2002, 2, 3)))
 
     assert months == [
-        Month(2001, 11),
-        Month(2001, 12),
-        Month(2002, 1),
-        Month(2002, 2),
+        (2001, 11),
+        (2001, 12),
+        (2002, 1),
+        (2002, 2),
     ]
 
 
@@ -122,37 +121,37 @@ def test_iter_months_rejects_reversed_period() -> None:
 
 
 def test_resolve_month_paths(pipeline_config: dict) -> None:
-    paths = resolve_month_paths(pipeline_config, Month(2001, 1))
+    paths = resolve_month_paths(pipeline_config, (2001, 1))
 
-    assert paths.raw_archive == (
+    assert paths["raw_archive"] == (
         Path(pipeline_config["paths"]["raw"]) / "era5_tn_2001_01.zip"
     )
-    assert paths.interim_dir == (
+    assert paths["interim_dir"] == (
         Path(pipeline_config["paths"]["interim"]) / "2001_01"
     )
-    assert paths.processed_file == (
+    assert paths["processed_file"] == (
         Path(pipeline_config["paths"]["processed"]) / "era5_tn_2001_01.nc"
     )
 
 
 def test_run_month_success(pipeline_config: dict) -> None:
     client = FakeCDSClient(pipeline_config)
-    month = Month(2001, 1)
+    month = (2001, 1)
 
     result = run_month(client, pipeline_config, month)
 
-    assert result.status == STATUS_SUCCESS
-    assert result.error is None
-    assert result.paths.processed_file.is_file()
-    assert result.paths.raw_archive.is_file()
-    assert result.paths.interim_dir.is_dir()
+    assert result["status"] == STATUS_SUCCESS
+    assert result["error"] is None
+    assert result["paths"]["processed_file"].is_file()
+    assert result["paths"]["raw_archive"].is_file()
+    assert result["paths"]["interim_dir"].is_dir()
     assert len(client.calls) == 1
 
     _, request, _ = client.calls[0]
     assert request["year"] == ["2001"]
     assert request["month"] == ["01"]
 
-    with xr.open_dataset(result.paths.processed_file) as dataset:
+    with xr.open_dataset(result["paths"]["processed_file"]) as dataset:
         for variable in (
             "temperature_celsius",
             "precipitation_mm",
@@ -163,45 +162,45 @@ def test_run_month_success(pipeline_config: dict) -> None:
 
 def test_run_month_skips_existing_output(pipeline_config: dict) -> None:
     client = FakeCDSClient(pipeline_config)
-    month = Month(2001, 1)
+    month = (2001, 1)
 
     paths = resolve_month_paths(pipeline_config, month)
-    paths.processed_file.write_bytes(b"already processed")
+    paths["processed_file"].write_bytes(b"already processed")
 
     result = run_month(client, pipeline_config, month)
 
-    assert result.status == STATUS_SKIPPED
+    assert result["status"] == STATUS_SKIPPED
     assert client.calls == []
 
 
 def test_run_month_force_redownloads(pipeline_config: dict) -> None:
     client = FakeCDSClient(pipeline_config)
-    month = Month(2001, 1)
+    month = (2001, 1)
 
     first = run_month(client, pipeline_config, month)
-    assert first.status == STATUS_SUCCESS
+    assert first["status"] == STATUS_SUCCESS
 
     skipped = run_month(client, pipeline_config, month)
-    assert skipped.status == STATUS_SKIPPED
+    assert skipped["status"] == STATUS_SKIPPED
 
     forced = run_month(client, pipeline_config, month, force=True)
-    assert forced.status == STATUS_SUCCESS
+    assert forced["status"] == STATUS_SUCCESS
     assert len(client.calls) == 2
 
 
 def test_run_month_dry_run_creates_nothing(pipeline_config: dict) -> None:
     client = FakeCDSClient(pipeline_config)
-    month = Month(2001, 1)
+    month = (2001, 1)
 
     result = run_month(client, pipeline_config, month, dry_run=True)
 
-    assert result.status == STATUS_SKIPPED
+    assert result["status"] == STATUS_SKIPPED
     assert client.calls == []
 
     paths = resolve_month_paths(pipeline_config, month)
-    assert not paths.raw_archive.exists()
-    assert not paths.interim_dir.exists()
-    assert not paths.processed_file.exists()
+    assert not paths["raw_archive"].exists()
+    assert not paths["interim_dir"].exists()
+    assert not paths["processed_file"].exists()
 
 
 def test_pipeline_continues_after_failure(pipeline_config: dict) -> None:
@@ -213,21 +212,21 @@ def test_pipeline_continues_after_failure(pipeline_config: dict) -> None:
 
     result = run_pipeline(client, config, months)
 
-    assert len(result.results) == 3
-    assert result.success_count == 2
-    assert result.failed_count == 1
-    assert result.skipped_count == 0
+    assert len(result["results"]) == 3
+    assert result["success_count"] == 2
+    assert result["failed_count"] == 1
+    assert result["skipped_count"] == 0
 
-    statuses = [month_result.status for month_result in result.results]
+    statuses = [month_result["status"] for month_result in result["results"]]
     assert statuses == [STATUS_SUCCESS, STATUS_FAILED, STATUS_SUCCESS]
 
-    failed = result.results[1]
-    assert failed.month == Month(2001, 2)
-    assert failed.error is not None
+    failed = result["results"][1]
+    assert failed["month"] == (2001, 2)
+    assert failed["error"] is not None
 
-    assert resolve_month_paths(config, Month(2001, 1)).processed_file.is_file()
-    assert not resolve_month_paths(config, Month(2001, 2)).processed_file.exists()
-    assert resolve_month_paths(config, Month(2001, 3)).processed_file.is_file()
+    assert resolve_month_paths(config, (2001, 1))["processed_file"].is_file()
+    assert not resolve_month_paths(config, (2001, 2))["processed_file"].exists()
+    assert resolve_month_paths(config, (2001, 3))["processed_file"].is_file()
 
 
 def test_pipeline_fail_fast_stops_after_failure(pipeline_config: dict) -> None:
@@ -239,9 +238,9 @@ def test_pipeline_fail_fast_stops_after_failure(pipeline_config: dict) -> None:
 
     result = run_pipeline(client, config, months, fail_fast=True)
 
-    assert len(result.results) == 2
-    assert result.failed_count == 1
-    assert result.results[-1].month == Month(2001, 2)
+    assert len(result["results"]) == 2
+    assert result["failed_count"] == 1
+    assert result["results"][-1]["month"] == (2001, 2)
 
 
 def test_pipeline_dry_run_processes_nothing(pipeline_config: dict) -> None:
@@ -253,12 +252,12 @@ def test_pipeline_dry_run_processes_nothing(pipeline_config: dict) -> None:
 
     result = run_pipeline(client, config, months, dry_run=True)
 
-    assert result.skipped_count == 2
-    assert result.success_count == 0
+    assert result["skipped_count"] == 2
+    assert result["success_count"] == 0
     assert client.calls == []
 
     for month in months:
         paths = resolve_month_paths(config, month)
-        assert not paths.raw_archive.exists()
-        assert not paths.interim_dir.exists()
-        assert not paths.processed_file.exists()
+        assert not paths["raw_archive"].exists()
+        assert not paths["interim_dir"].exists()
+        assert not paths["processed_file"].exists()

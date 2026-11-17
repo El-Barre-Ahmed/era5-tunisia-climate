@@ -1,10 +1,11 @@
+
 import cdsapi
 
 from era5_tunisia.config import load_config
 
 
 def create_cds_client():
-    """Créer un client CDS."""
+    """Créer et retourner un client CDS."""
 
     config = load_config()
 

@@ -5,7 +5,7 @@ import shutil
 import tempfile
 import uuid
 import zipfile
-
+from era5_tunisia.logging_config import setup_logging
 from pathlib import Path, PurePosixPath
 
 from era5_tunisia.config import PROJECT_ROOT, load_config
@@ -338,9 +338,10 @@ def extract_all() -> None:
 
 if __name__ == "__main__":
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s"
-    )
+    setup_logging()
+
+    logger.info("ERA5 Extractor started")
 
     extract_all()
+
+    logger.info("ERA5 Extractor finished")

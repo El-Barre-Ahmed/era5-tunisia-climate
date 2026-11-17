@@ -1,3 +1,5 @@
+
+import argparse
 import calendar
 import logging
 import time
@@ -6,6 +8,8 @@ from datetime import date, timedelta
 from zipfile import ZipFile, BadZipFile
 
 from era5_tunisia.config import load_config, PROJECT_ROOT
+from era5_tunisia.logging_config import setup_logging
+from era5_tunisia.acquisition.cds_client import create_cds_client
 
 
 # Logger du module
@@ -26,6 +30,9 @@ def generate_months(start_date, end_date):
 
     current = date.fromisoformat(start_date)
     end = date.fromisoformat(end_date)
+
+    if current > end:
+        raise ValueError("La date de début doit précéder la date de fin.")
 
     while current <= end:
 
@@ -81,6 +88,7 @@ def is_valid_zip(file_path):
 
     try:
         with ZipFile(file_path, "r") as archive:
+
             return (
                 archive.testzip() is None
                 and len(archive.namelist()) > 0
@@ -174,23 +182,69 @@ def download_month(client, config, year, month, days):
             time.sleep(delay)
 
 
-def download_period(client):
-    """Télécharger toute la période configurée, mois par mois."""
+def download_period(client, year=None, month=None):
+    """Télécharger toute la période ou un mois spécifique."""
 
     config = load_config()
 
-    start_date = config["data"]["start_date"]
-    end_date = config["data"]["end_date"]
+    start_date = date.fromisoformat(config["data"]["start_date"])
+    end_date = date.fromisoformat(config["data"]["end_date"])
 
     if config["acquisition"]["unit"] != "month":
         raise ValueError("Only monthly acquisition is supported.")
 
+    if (year is None) != (month is None):
+        raise ValueError("Year and month must be provided together.")
+
+    # Mode 1 : téléchargement d'un mois spécifique
+    if year is not None:
+
+        if not 1 <= month <= 12:
+            raise ValueError("Month must be between 1 and 12.")
+
+        month_start = date(year, month, 1)
+
+        month_end = date(
+            year,
+            month,
+            calendar.monthrange(year, month)[1]
+        )
+
+        period_start = max(start_date, month_start)
+        period_end = min(end_date, month_end)
+
+        if period_start > period_end:
+            raise ValueError("Selected month is outside configured period.")
+
+        days = [
+            (period_start + timedelta(days=i)).strftime("%d")
+            for i in range((period_end - period_start).days + 1)
+        ]
+
+        logger.info("Starting ERA5 acquisition for %04d-%02d", year, month)
+
+        download_month(
+            client,
+            config,
+            year,
+            month,
+            days
+        )
+
+        logger.info("Monthly acquisition completed.")
+
+        return
+
+    # Mode 2 : téléchargement de toute la période
     logger.info("Starting ERA5 acquisition")
     logger.info("Period: %s to %s", start_date, end_date)
 
     months_processed = 0
 
-    for year, month, days in generate_months(start_date, end_date):
+    for year, month, days in generate_months(
+        str(start_date),
+        str(end_date)
+    ):
 
         download_month(
             client,
@@ -206,3 +260,46 @@ def download_period(client):
         "Acquisition completed. Months processed: %d",
         months_processed
     )
+
+
+def main():
+    """Point d'entrée du module Downloader."""
+
+    parser = argparse.ArgumentParser(
+        description="ERA5 monthly data downloader"
+    )
+
+    parser.add_argument(
+        "--year",
+        type=int,
+        help="Année à télécharger"
+    )
+
+    parser.add_argument(
+        "--month",
+        type=int,
+        help="Mois à télécharger (1-12)"
+    )
+
+    args = parser.parse_args()
+
+    if (args.year is None) != (args.month is None):
+        parser.error("--year et --month doivent être fournis ensemble.")
+
+    setup_logging()
+
+    logger.info("ERA5 Downloader started")
+
+    client = create_cds_client()
+
+    download_period(
+        client,
+        year=args.year,
+        month=args.month
+    )
+
+    logger.info("ERA5 Downloader finished")
+
+
+if __name__ == "__main__":
+    main()

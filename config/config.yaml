@@ -20,7 +20,23 @@ acquisition:
   retry_base_seconds: 10
   retry_max_seconds: 300
   timeout_seconds: 300
+validation:
+  files:
+    instant: "data_stream-oper_stepType-instant.nc"
+    accumulated: "data_stream-oper_stepType-accum.nc"
 
+  variables:
+    instant: ["t2m", "u10", "v10"]
+    accumulated: ["tp"]
+
+  dimensions: ["valid_time", "latitude", "longitude"]
+
+  coordinates:
+    time: "valid_time"
+    latitude: "latitude"
+    longitude: "longitude"
+
+  expected_frequency: "1h"
 naming:
   raw_archive: "era5_tn_{year}_{month}.zip"
   extracted_dir: "{year}_{month}"
